@@ -1,6 +1,5 @@
 $vcserver = "pcc-37-187-228-26.ovh.com"
 $csvfile = "vmsdeploy.csv"
-$guestCredential = get-credential -message "Guest credential"
 $timeout = 1800
 $loop_control = 0
 
@@ -26,6 +25,7 @@ if(!$global:DefaultVIServer) {
 	}
 }
 
+$GuestCredential = $Host.UI.PromptForCredential("Please enter credentials", "Enter Guest credentials for Template", "", "")
 $ScriptRoot = Split-Path $MyInvocation.MyCommand.Path
 $vms2deploy = Import-Csv -Path "$ScriptRoot\$csvfile"
 foreach ($vm in $vms2deploy) {
