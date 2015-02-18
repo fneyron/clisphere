@@ -1,2 +1,0 @@
-name,template,oscust,cluster,ressourcepool,folder,datastore,ip,mask,gw,dns1,dns2
-Test11,CL02-TEMPLATE-Ubuntu-14.04,PowerCLI-Ubuntu-14.04,Oscaro,03 - Dev,Dev,pcc-000090,10.0.0.75,255.255.255.0,10.0.0.1,10.0.0.32,10.0.0.34
