@@ -1,5 +1,6 @@
 $vcserver = "pcc-37-187-228-26.ovh.com"
 $csvfile = "vmsdeploy.csv"
+$guestCredential = get-credential -message "Guest credential"
 $timeout = 1800
 $loop_control = 0
 
@@ -47,8 +48,6 @@ foreach ($vm in $vms2deploy) {
                 Set-OSCustomizationNicMapping -OSCustomizationNicMapping ($cloned_oscust | Get-OscustomizationNicMapping) -Position 1 -IpMode UseStaticIp -IpAddress $vm.ip -SubnetMask $vm.mask -DefaultGateway $vm.gw | Out-Null
                 write-Host "Deploying VM $($vm.name) to datastore cluster $($vm.datastore)"
                 new-vm -name $vm.name -template $(get-template -name $vm.template) -vmhost $vmhost -oscustomizationspec $cloned_oscust -datastore $(get-datastore -name $vm.datastore) -location $(get-folder -name $vm.folder) | Out-Null
-                Set-VM –VM $vm.name –OSCustomizationSpec $cloned_oscust –Confirm:$false
-
             }
 
             $loop_control = 0
@@ -61,25 +60,9 @@ foreach ($vm in $vms2deploy) {
                 $loop_control++
             } until ( ($toolsStatus -eq "toolsOk") -or ($loop_control -gt $timeout) )
             
-            write-host "Waiting for customization spec to apply for $($vm.name) (a reboot)" -ForegroundColor Green
-            do {
-                $toolsStatus = (Get-VM -name $vm.name).extensiondata.Guest.ToolsStatus
-                Start-Sleep 3
-                $loop_control++
-            } until ( ($toolsStatus -eq "toolsNotRunning") -or ($loop_control -gt $timeout) )
-
-            Write-Host "OS customization in progress for $($vm.name)" -ForegroundColor red
-            do {
-                $toolsStatus = (Get-VM -name $vm.name).extensiondata.Guest.ToolsStatus
-                Start-Sleep 3
-                $loop_control++
-            } until ( ($toolsStatus -eq "toolsOk") -or ($loop_control -gt $timeout) )
-
-            #wait another minute "just in case" feel free to remove this line
-            Start-Sleep 60
-            
-            #clean-up the cloned OS Customization spec
-            Remove-OSCustomizationSpec -CustomizationSpec $cloned_oscust -Confirm:$false | Out-Null
+            #Set-VM –VM $vm.name –OSCustomizationSpec $cloned_oscust –Confirm:$false
+            $command = "ifconfig eth0 down; ifconfig eth0 192.168.140.101; ifconfig eth0 up;"
+            Invoke-VMScript -VM CL02-SANDBOXFN-V001 -ScriptText $command -GuestUser $guestUser -GuestPassword VMware!
             
             if ($loop_control -gt $timeout){
                 Write-Host "Deployment of $($vm.name) took more than $($timeout/20) minutes, check if everything OK" -ForegroundColor red
