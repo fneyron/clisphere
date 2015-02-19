@@ -1,7 +1,7 @@
 #DNS server
 $DNS = $true
-$DNSServer = "CL02-INFRA-V001"
-$ZoneName = "oscaroad.com"
+$DNSServer = "MONDNS"
+$ZoneName = "test.com"
 
 Function Connect($vcserver)
 {
