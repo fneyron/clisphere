@@ -69,6 +69,8 @@ Function Main
             } -ArgumentList $ZoneName,$vm.Name
         }
     }
+    #disconnect vCenter
+    Disconnect-VIServer -Confirm:$false
 }
 
 

@@ -4,7 +4,7 @@
 # datastore search variables
 $datastoreMinimumSpaceGB = 10
 $datastoreMaximumVMs = 80
-$datastoreNameQuery = "pcc-000*"
+$datastoreNameQuery = "pcc*"
 
 # PowerOn timeout
 $timeout = 60
@@ -63,7 +63,7 @@ Function FindDatastore($vm)
         Sort @{expression="FreeSpaceGbNumberVMs";Ascending=$true})
         # if at any point we run out of space throw an error and exit
     if(!$datastores) {
-        Write-Host "Not enough datastore space to deploy $vmQuantity VMs, deploy an extra datastore and run the script again"
+        Write-Host "Not enough datastore space to deploy $vmQuantity VMs or no datastore found, check conf or deploy a new datastore" -ForegroundColor Red
         exit
     }
     # if there are stores available continue and deduct a VM from the best store
@@ -101,7 +101,7 @@ function CreateVM($vm)
     }
    
     # Creating vm
-    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -vmhost $vmhost -oscustomizationspec $oscust -Datastore $(get-datastore -name $datastore) -Location $(get-folder -name $vm.Folder) -ResourcePool $(get-resourcepool -name $vm.RessourcePool) | Out-Null
+    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -vmhost $vmhost -oscustomizationspec $oscust -Datastore $(get-datastore -name $datastore) -Location $(get-folder -name $vm.Folder) -ResourcePool $(get-resourcepool -name $vm.RessourcePool -location $vm.Cluster) | Out-Null
     #clean-up the cloned OS Customization spec
     Remove-OSCustomizationSpec -CustomizationSpec $oscust -Confirm:$false | Out-Null
 }
@@ -133,7 +133,7 @@ Function Main
             CreateVM($vm)
 
             # Setting VLAN
-            Get-NetworkAdapter -vm $vm.Name | Set-NetworkAdapter -NetworkName $vm.VLAN -Confirm:$false | Out-Null
+            Get-NetworkAdapter -vm $vm.Name | Set-NetworkAdapter -Portgroup $vm.VLAN -Confirm:$false | Out-Null
 
             $loop_control = 0
             write-host "Starting VM $($vm.name)"
