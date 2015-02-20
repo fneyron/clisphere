@@ -1,7 +1,7 @@
 #DNS server
 $DNS = $true
-$DNSServer = "MONDNS"
-$ZoneName = "test.com"
+$DNSServer = "CL02-INFRA-V001"
+$ZoneName = "oscaroad.com"
 
 Function Connect($vcserver)
 {
@@ -65,8 +65,8 @@ Function Main
             Write-Host "---------------------------------------------------"
             echo $ZoneName
             Invoke-Command -ComputerName $DNSServer -ScriptBlock {
-                Remove-DnsServerResourceRecord -ZoneName $ZoneName -Name $vm.name -RRType "A" -confirm:$false
-            }
+                Remove-DnsServerResourceRecord -ZoneName $args[0] -Name $args[1] -RRType "A" -confirm:$false
+            } -ArgumentList $ZoneName,$vm.Name
         }
     }
 }

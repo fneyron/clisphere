@@ -11,7 +11,7 @@ $timeout = 60
 $loop_control = 0
 
 #DNS server
-$DNS = $false
+$DNS = $true
 $DNSServer = "CL02-INFRA-V001"
 $ZoneName = "oscaroad.com"
 
@@ -161,8 +161,11 @@ Function Main
                 Write-Host "---------------------------------------------------"
                 Write-Host "Updating DNS Entries ..."
                 Write-Host "---------------------------------------------------"
-
-                Invoke-Command -ComputerName $DNSServer -ScriptBlock {Add-DnsServerResourceRecordA -ZoneName $ZoneName -Name $vm.name -IPv4Address $vm.IP -CreatePtr}
+               
+                Write-Host 
+                Invoke-Command -ComputerName $DNSServer -ScriptBlock {
+                    Add-DnsServerResourceRecordA -ZoneName $args[0] -Name $args[1] -IPv4Address $args[2] -CreatePtr
+                } -ArgumentList $ZoneName,$vm.Name,$vm.IP
             }
         }
     }
