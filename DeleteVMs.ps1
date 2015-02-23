@@ -1,6 +1,3 @@
-# Developed by Florent NEYRON
-# florent.neyron@gmail.com
-
 #DNS server
 $DNS = $true
 $DNSServer = "CL02-INFRA-V001"
