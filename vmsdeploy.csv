@@ -1,0 +1,3 @@
+Name,Template,Custom,Cluster,RessourcePool,Folder,Datastore,IP,Netmask, Gateway, VLAN, VCPU, Mem
+Test1,CL02-TEMPLATE-Ubuntu-14.04,PowerCLI-Ubuntu-14.04,Oscaro,03 - Dev,Dev,,192.168.140.102,255.255.255.0, 192.168.140.254, 20-FrontDeveloppementVlan, 4, 4096
+Test2,CL02-TEMPLATE-Ubuntu-14.04,PowerCLI-Ubuntu-14.04,Oscaro,03 - Dev,Dev,,192.168.140.103,255.255.255.0, 192.168.140.254, 20-FrontDeveloppementVlan, 4, 4096
