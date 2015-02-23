@@ -41,7 +41,7 @@ Function Main
         Write-Host "No csv file present $csvfile" -Foregroundcolor Red
         Exit
     }
-    $vms2deploy = Import-Csv -Path $csvfile
+    $vms2deploy = Import-Csv -Path $csvfile -Delimiter ";"
     foreach ($vm in $vms2deploy) {
         Write-Host "---------------------------------------------------"
         Write-Host "Deleting VM $($vm.Name) ..."
@@ -63,7 +63,6 @@ Function Main
             Write-Host "---------------------------------------------------"
             Write-Host "Delete DNS Entries ..."
             Write-Host "---------------------------------------------------"
-            echo $ZoneName
             Invoke-Command -ComputerName $DNSServer -ScriptBlock {
                 Remove-DnsServerResourceRecord -ZoneName $args[0] -Name $args[1] -RRType "A" -confirm:$false
             } -ArgumentList $ZoneName,$vm.Name

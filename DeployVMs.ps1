@@ -1,4 +1,5 @@
 # Developed by Florent NEYRON
+# florent.neyron@gmail.com
 
 # Global variables
 # datastore search variables
@@ -52,7 +53,7 @@ Function FindDatastore($vm)
     Write-Host "---------------------------------------------------"
 
     # get datastores
-    $datastores = @(Get-Datastore | `
+    $datastores = @(Get-Cluster -Name $vm.Cluster | Get-VMHost $vmhost | Get-Datastore | `
         # filter to datastores with name like $datastoreNameQuery with at least $datastoreMinumumSpace free space
         ? {($_.Name -like $datastoreNameQuery) -and ($_.FreeSpaceGB -ge $datastoreMinimumSpaceGB)} | `
         # select relevant data and get number of powered on VMs
@@ -73,6 +74,24 @@ Function FindDatastore($vm)
     return $($datastores[0].name)
 }
 
+function RetrieveResourcePoolID($path)
+{
+    $SplitedPath = $path.split('/')
+    $i = 0
+    $id = $(get-resourcepool -name $SplitedPath[$i] -location $vm.Cluster).ID
+    while ($i -ne $SplitedPath.length - 1){
+        $rps = Get-View $(get-resourcepool -name $SplitedPath[$i] -location $vm.Cluster).ExtensionData.ResourcePool
+        foreach ($rp in $rps){
+            if($rp.Name -eq $SplitedPath[$i + 1]){
+                $id = $rp.MoRef
+                $i = $i + 1
+                break
+            }
+        }
+    }
+    return $(get-resourcepool -Id $id)
+}
+
 function CreateVM($vm)
 {
     # Put VM on a random host in the cluster
@@ -88,7 +107,18 @@ function CreateVM($vm)
             Remove-OSCustomizationSpec "$($vm.Custom)_$($vm.Name)" -Confirm:$false | Out-Null
         }
         $oscust = Get-OSCustomizationSpec $($vm.Custom) | New-OSCustomizationSpec -name "$($vm.Custom)_$($vm.Name)"
-        Set-OSCustomizationNicMapping -OSCustomizationNicMapping ($oscust | Get-OscustomizationNicMapping) -Position 1 -IpMode UseStaticIp -IpAddress $vm.IP -SubnetMask $vm.Netmask -DefaultGateway $vm.Gateway | Out-Null
+        if ($oscust.OSType -eq "Windows"){
+            Set-OSCustomizationNicMapping -OSCustomizationNicMapping ($oscust | Get-OscustomizationNicMapping) -Position 1 -IpMode UseStaticIp -IpAddress $vm.IP -SubnetMask $vm.Netmask -DefaultGateway $vm.Gateway -dns $($oscust | Get-OscustomizationNicMapping).dns | Out-Null
+        }
+        elseif ($oscust.OSType -eq "Linux")
+        {
+            Set-OSCustomizationNicMapping -OSCustomizationNicMapping ($oscust | Get-OscustomizationNicMapping) -Position 1 -IpMode UseStaticIp -IpAddress $vm.IP -SubnetMask $vm.Netmask -DefaultGateway $vm.Gateway | Out-Null
+
+        }
+        else 
+        {
+            Write-Host "OS Type not recognized in Customization spec" -ForegroundColor Red
+        }
     }
     if ([string]::IsNullOrEmpty($vm.datastore))
     {
@@ -101,7 +131,7 @@ function CreateVM($vm)
     }
    
     # Creating vm
-    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -vmhost $vmhost -oscustomizationspec $oscust -Datastore $(get-datastore -name $datastore) -Location $(get-folder -name $vm.Folder) -ResourcePool $(get-resourcepool -name $vm.RessourcePool -location $vm.Cluster) | Out-Null
+    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -oscustomizationspec $oscust -vmhost $vmhost -Datastore $(get-datastore -name $datastore) -Location $(get-folder -name $vm.Folder) -ResourcePool $(RetrieveResourcePoolID($vm.ressourcepool)) | Out-Null
     #clean-up the cloned OS Customization spec
     Remove-OSCustomizationSpec -CustomizationSpec $oscust -Confirm:$false | Out-Null
 }
@@ -114,7 +144,7 @@ Function Main
         Write-Host "No csv file present $csvfile" -Foregroundcolor Red
         Exit
     }
-    $vms2deploy = Import-Csv -Path $csvfile
+    $vms2deploy = Import-Csv -Path $csvfile -delimiter ";"
     foreach ($vm in $vms2deploy) {
         # Check parameter are not empty in csv file
         checkCSV($vm)
@@ -129,6 +159,7 @@ Function Main
         }
         else
         {
+
             # Create VM
             CreateVM($vm)
 
@@ -137,23 +168,9 @@ Function Main
 
             $loop_control = 0
             write-host "Starting VM $($vm.name)"
-            start-vm -vm $vm.name -confirm:$false | Out-Null
-           
-           <# $command = "ifconfig eth0 down; ifconfig eth0 192.168.140.101; ifconfig eth0 up;"
-            Invoke-VMScript -VM CL02-SANDBOXFN-V001 -ScriptText $command -GuestUser $guestUser -GuestPassword VMware!#>
-
-            # Wait until vm toosl start
-            write-host "Waiting for first boot of $($vm.name)" 
-            do {
-                $toolsStatus = (Get-VM -name $vm.name).extensiondata.Guest.ToolsStatus
-                Start-Sleep 1
-                $loop_control++
-            } until ( ($toolsStatus -eq "toolsOk") -or ($loop_control -gt $timeout) )
-
-            if ($loop_control -gt $timeout){
-                Write-Host "Deployment of $($vm.name) took more than $($timeout/60) minutes, check if everything OK" -ForegroundColor red
-            }
-
+            start-vm -vm $vm.name -confirm:$false | Wait-Tools -TimeoutSeconds $timeout | Out-Null
+            
+            write-host "VMTools Ok, Restart guest OS"
             Restart-vmGuest -vm $vm.Name
             
             if (($vm.IP -ne $Null) -and ($DNS))
@@ -161,8 +178,6 @@ Function Main
                 Write-Host "---------------------------------------------------"
                 Write-Host "Updating DNS Entries ..."
                 Write-Host "---------------------------------------------------"
-               
-                Write-Host 
                 Invoke-Command -ComputerName $DNSServer -ScriptBlock {
                     Add-DnsServerResourceRecordA -ZoneName $args[0] -Name $args[1] -IPv4Address $args[2] -CreatePtr
                 } -ArgumentList $ZoneName,$vm.Name,$vm.IP
@@ -171,18 +186,27 @@ Function Main
     }
     Write-Host "All process Successfull, exiting" -ForegroundColor Green
     #disconnect vCenter
-    #Disconnect-VIServer -Confirm:$false
-}
+    #
+}Disconnect-VIServer -Confirm:$false
 
 Function checkCSV($vm)
 {
-    $required = ($vm.Name, $vm.ressourcepool, $vm.Template, $vm.Folder, $vm.Cluster, $vm.Custom)
+    $required = ($vm.Name, $vm.ressourcepool, $vm.Template, $vm.Cluster, $vm.Custom)
     foreach ($item in $required){
         if ([string]::IsNullOrEmpty($item)) { 
             Write-Host "Empty required value in CSV file. Exiting" -Foregroundcolor Red
             Exit
         }
     }
+    if($vm.Folder){
+        foreach ($dir in $vm.Folder.split('/')){
+            if (!(get-folder -name $dir -ErrorAction SilentlyContinue) -or ($(get-folder -name $dir -ErrorAction SilentlyContinue).Type -ne "VM")){ 
+                Write-Host "Directory not found or it's not a directory: $dir"
+                Exit
+            }
+        }
+    }
+    else { $vm.Folder = 'vm' }
 }
 
 # Define script path
