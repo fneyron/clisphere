@@ -5,8 +5,8 @@
 # datastore search variables
 $datastoreMinimumSpaceGB = 10
 $datastoreMaximumVMs = 80
-$datastoreNameQuery = "pcc*"
-
+#$defaultDatastores = 'VNX1-OSCARO-CLI3_LUN_100','VNX1-OSCARO-CLI3_LUN_101','VNX1-OSCARO-STD3_LUN_0','VNX1-OSCARO-STD3_LUN_1'
+$defaultDatastores = 'pcc-000090','pcc-000050'
 # PowerOn timeout
 $timeout = 60
 $loop_control = 0
@@ -55,14 +55,15 @@ Function FindDatastore($vm)
     # get datastores
     $datastores = @(Get-Cluster -Name $vm.Cluster | Get-VMHost $vmhost | Get-Datastore | `
         # filter to datastores with name like $datastoreNameQuery with at least $datastoreMinumumSpace free space
-        ? {($_.Name -like $datastoreNameQuery) -and ($_.FreeSpaceGB -ge $datastoreMinimumSpaceGB)} | `
+        ? {($defaultDatastores -contains ($_.Name)) -and ($_.FreeSpaceGB -ge $datastoreMinimumSpaceGB)} | `
         # select relevant data and get number of powered on VMs
         select name, freespacegb, @{N="NumberVMs";E={@($_ | Get-VM | where {$_.PowerState -eq "PoweredOn"}).Count}} | `
         # filter to datastores with less than $datastoreMaximumVMs
         ? {($_.NumberVMs -lt $datastoreMaximumVMs)} | `
         # sort VMs by number VMs then FreeSpace
-        Sort @{expression="FreeSpaceGbNumberVMs";Ascending=$true})
+        Sort @{expression="FreeSpaceGB";Descending=$true})
         # if at any point we run out of space throw an error and exit
+    Write-Host $datastores
     if(!$datastores) {
         Write-Host "Not enough datastore space to deploy $vmQuantity VMs or no datastore found, check conf or deploy a new datastore" -ForegroundColor Red
         exit
@@ -124,6 +125,7 @@ function CreateVM($vm)
     {
         # Finding Datastore
         $datastore = FindDatastore($vm)
+        echo $datastore
     }
     else 
     {
@@ -186,8 +188,8 @@ Function Main
     }
     Write-Host "All process Successfull, exiting" -ForegroundColor Green
     #disconnect vCenter
-    #
-}Disconnect-VIServer -Confirm:$false
+    #Disconnect-VIServer -Confirm:$false
+}
 
 Function checkCSV($vm)
 {
