@@ -56,7 +56,7 @@ Function Main
             Remove-VM $vm.name -DeleteFromDisk
 
             
-            Write-Host "VM $($vm.Name) successfully deleted" -foregrouncolor Green
+            Write-Host "VM $($vm.Name) successfully deleted" -foregroundcolor Green
         }
         if ($DNS)
         {
@@ -69,7 +69,7 @@ Function Main
         }
     }
     #disconnect vCenter
-    Disconnect-VIServer -Confirm:$false
+    #Disconnect-VIServer -Confirm:$false
 }
 
 

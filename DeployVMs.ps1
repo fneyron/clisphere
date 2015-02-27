@@ -5,15 +5,15 @@
 # datastore search variables
 $datastoreMinimumSpaceGB = 10
 $datastoreMaximumVMs = 80
-#$defaultDatastores = 'VNX1-OSCARO-CLI3_LUN_100','VNX1-OSCARO-CLI3_LUN_101','VNX1-OSCARO-STD3_LUN_0','VNX1-OSCARO-STD3_LUN_1'
-$defaultDatastores = 'pcc-000090','pcc-000050'
+$defaultDatastores = 'VNX1-OSCARO-CLI3_LUN_100','VNX1-OSCARO-CLI3_LUN_101','VNX1-OSCARO-STD3_LUN_0','VNX1-OSCARO-STD3_LUN_1'
+#$defaultDatastores = 'pcc-000090','pcc-000050'
 # PowerOn timeout
-$timeout = 60
+$timeout = 120
 $loop_control = 0
 
 #DNS server
 $DNS = $true
-$DNSServer = "CL02-INFRA-V001"
+$DNSServer = "172.16.147.1"
 $ZoneName = "oscaroad.com"
 
 Function Connect($vcserver)
@@ -63,7 +63,6 @@ Function FindDatastore($vm)
         # sort VMs by number VMs then FreeSpace
         Sort @{expression="FreeSpaceGB";Descending=$true})
         # if at any point we run out of space throw an error and exit
-    Write-Host $datastores
     if(!$datastores) {
         Write-Host "Not enough datastore space to deploy $vmQuantity VMs or no datastore found, check conf or deploy a new datastore" -ForegroundColor Red
         exit
@@ -73,6 +72,24 @@ Function FindDatastore($vm)
         Write-Host "Using $($datastores[0].name), $([Math]::Round($datastores[0].FreeSpaceGB))GB free, $($datastores[0].NumberVMs) vms"
     }
     return $($datastores[0].name)
+}
+
+function RetrieveFolderID($path)
+{   
+    $SplitedPath = $path.split('/')
+    $depth = 0
+    $id = $(get-folder -name $SplitedPath[$depth]).ID
+    while ($depth -lt $SplitedPath.length - 1){
+        $dirs = Get-View $(get-folder -location $SplitedPath[$depth])
+        foreach ($dir in $dirs){
+            if(($dir.Parent.tostring() -eq $id.toString()) -and ($dir.Name -eq $SplitedPath[$depth + 1])){
+                $id = $dir.MoRef.tostring()
+                $depth = $depth + 1
+                break
+            }
+        }
+    }
+    return $(get-folder -Id $id)
 }
 
 function RetrieveResourcePoolID($path)
@@ -93,7 +110,20 @@ function RetrieveResourcePoolID($path)
     return $(get-resourcepool -Id $id)
 }
 
-function CreateVM($vm)
+function UpdateDNS
+{
+    if (($vm.IP -ne $Null) -and ($DNS))
+        {
+            Write-Host "---------------------------------------------------"
+            Write-Host "Updating DNS Entries ..."
+            Write-Host "---------------------------------------------------"
+            Invoke-Command -ComputerName $DNSServer -ScriptBlock {
+                Add-DnsServerResourceRecordA -ZoneName $args[0] -Name $args[1] -IPv4Address $args[2] -CreatePtr
+            } -ArgumentList $ZoneName,$vm.Name,$vm.IP
+        }
+}
+
+function CreateVM
 {
     # Put VM on a random host in the cluster
     $vmhost = Get-Cluster $vm.cluster | Get-VMHost -state connected | Get-Random
@@ -108,7 +138,8 @@ function CreateVM($vm)
             Remove-OSCustomizationSpec "$($vm.Custom)_$($vm.Name)" -Confirm:$false | Out-Null
         }
         $oscust = Get-OSCustomizationSpec $($vm.Custom) | New-OSCustomizationSpec -name "$($vm.Custom)_$($vm.Name)"
-        if ($oscust.OSType -eq "Windows"){
+        if ($oscust.OSType -eq "Windows")
+        {
             Set-OSCustomizationNicMapping -OSCustomizationNicMapping ($oscust | Get-OscustomizationNicMapping) -Position 1 -IpMode UseStaticIp -IpAddress $vm.IP -SubnetMask $vm.Netmask -DefaultGateway $vm.Gateway -dns $($oscust | Get-OscustomizationNicMapping).dns | Out-Null
         }
         elseif ($oscust.OSType -eq "Linux")
@@ -125,7 +156,6 @@ function CreateVM($vm)
     {
         # Finding Datastore
         $datastore = FindDatastore($vm)
-        echo $datastore
     }
     else 
     {
@@ -133,7 +163,27 @@ function CreateVM($vm)
     }
    
     # Creating vm
-    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -oscustomizationspec $oscust -vmhost $vmhost -Datastore $(get-datastore -name $datastore) -Location $(get-folder -name $vm.Folder) -ResourcePool $(RetrieveResourcePoolID($vm.ressourcepool)) | Out-Null
+    new-vm -name $vm.Name -template $(get-template -name $vm.Template) -oscustomizationspec $oscust -vmhost $vmhost -Datastore $(get-datastore -name $datastore) -Location $(RetrieveFolderID($vm.Folder)) -ResourcePool $(RetrieveResourcePoolID($vm.ressourcepool))  | set-vm -NumCpu $vm.VCPU -MemoryMB $vm.Mem -confirm:$false | Out-Null
+    
+    # Setting VLAN
+    Get-NetworkAdapter -vm $vm.Name | Set-NetworkAdapter -Portgroup $vm.VLAN -Confirm:$false | Out-Null
+
+    # Update disk size
+    Get-HardDisk -vm $vm.name | Set-HardDisk -CapacityGB $vm.Disk -Confirm:$false | Out-Null
+
+    $loop_control = 0
+    write-host "Starting VM $($vm.name)"
+    start-vm -vm $vm.name -confirm:$false 
+
+    # Wait for vmtools
+    Wait-Tools -vm $vm.name -TimeoutSeconds $timeout | Out-Null
+    
+    if (($oscust.OSType) -and ($oscust.OSType -eq "Linux")){
+        write-host "VMTools Ok, Restart guest OS"
+        Restart-vmGuest -vm $vm.Name | Wait-Tools -TimeoutSeconds $timeout | Out-Null
+    
+    }
+
     #clean-up the cloned OS Customization spec
     Remove-OSCustomizationSpec -CustomizationSpec $oscust -Confirm:$false | Out-Null
 }
@@ -161,34 +211,16 @@ Function Main
         }
         else
         {
-
             # Create VM
-            CreateVM($vm)
+            CreateVM
 
-            # Setting VLAN
-            Get-NetworkAdapter -vm $vm.Name | Set-NetworkAdapter -Portgroup $vm.VLAN -Confirm:$false | Out-Null
-
-            $loop_control = 0
-            write-host "Starting VM $($vm.name)"
-            start-vm -vm $vm.name -confirm:$false | Wait-Tools -TimeoutSeconds $timeout | Out-Null
-            
-            write-host "VMTools Ok, Restart guest OS"
-            Restart-vmGuest -vm $vm.Name
-            
-            if (($vm.IP -ne $Null) -and ($DNS))
-            {
-                Write-Host "---------------------------------------------------"
-                Write-Host "Updating DNS Entries ..."
-                Write-Host "---------------------------------------------------"
-                Invoke-Command -ComputerName $DNSServer -ScriptBlock {
-                    Add-DnsServerResourceRecordA -ZoneName $args[0] -Name $args[1] -IPv4Address $args[2] -CreatePtr
-                } -ArgumentList $ZoneName,$vm.Name,$vm.IP
-            }
+            # Update DNS Entry
+            UpdateDNS
         }
     }
     Write-Host "All process Successfull, exiting" -ForegroundColor Green
     #disconnect vCenter
-    #Disconnect-VIServer -Confirm:$false
+    Disconnect-VIServer -Confirm:$false
 }
 
 Function checkCSV($vm)
@@ -201,10 +233,9 @@ Function checkCSV($vm)
         }
     }
     if($vm.Folder){
-        foreach ($dir in $vm.Folder.split('/')){
-            if (!(get-folder -name $dir -ErrorAction SilentlyContinue) -or ($(get-folder -name $dir -ErrorAction SilentlyContinue).Type -ne "VM")){ 
+        foreach ($directory in $vm.Folder.split('/')){
+            if (!(get-folder -name $directory -ErrorAction SilentlyContinue) -or ($(get-folder -name $directory -ErrorAction SilentlyContinue).Type -ne "VM")){ 
                 Write-Host "Directory not found or it's not a directory: $dir"
-                Exit
             }
         }
     }
