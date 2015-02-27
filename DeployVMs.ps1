@@ -5,16 +5,15 @@
 # datastore search variables
 $datastoreMinimumSpaceGB = 10
 $datastoreMaximumVMs = 80
-$defaultDatastores = 'VNX1-OSCARO-CLI3_LUN_100','VNX1-OSCARO-CLI3_LUN_101','VNX1-OSCARO-STD3_LUN_0','VNX1-OSCARO-STD3_LUN_1'
-#$defaultDatastores = 'pcc-000090','pcc-000050'
+$defaultDatastores = 'Data-1','Data-2'
 # PowerOn timeout
 $timeout = 120
 $loop_control = 0
 
 #DNS server
 $DNS = $true
-$DNSServer = "172.16.147.1"
-$ZoneName = "oscaroad.com"
+$DNSServer = "192.168.0.1"
+$ZoneName = "mondomaine.com"
 
 Function Connect($vcserver)
 {
